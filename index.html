@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Treadmill BLE check</title>
+<style>
+  :root{
+    --navy:#2E6285; --ink:#101418; --paper:#fff; --hair:#D8DEE4;
+    --ok:#1E7A3C; --bad:#B4342A; --warn:#B57A12;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *,*::before,*::after{box-sizing:inherit}
+  html,body{margin:0;background:var(--paper);color:var(--ink)}
+  body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+       padding:12px;max-width:520px;margin:0 auto;-webkit-text-size-adjust:100%}
+  h1{font-size:20px;margin:6px 0 4px}
+  p.lede{font-size:14px;color:#5A6670;margin:0 0 14px;line-height:1.45}
+  button{font-family:inherit;font-weight:700;border:none;border-radius:9px;
+         color:#fff;background:var(--navy);padding:16px;font-size:17px;width:100%;
+         margin-bottom:9px;touch-action:manipulation}
+  button.alt{background:#fff;color:var(--navy);box-shadow:inset 0 0 0 2px var(--navy)}
+  button:disabled{opacity:.4}
+  .grid{display:flex;gap:9px}
+  .grid button{margin-bottom:9px}
+  #log{background:#0E1418;color:#D6E2EA;border-radius:9px;padding:11px;
+       font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;
+       word-break:break-word;min-height:220px;max-height:46vh;overflow-y:auto}
+  .ok{color:#6FD38C}.bad{color:#FF8B80}.warn{color:#FFCE6B}.dim{color:#7E93A2}
+</style>
+</head>
+<body>
+
+<h1>Treadmill BLE check</h1>
+<p class="lede">Open in Bluefy. Get the belt moving at a slow walk first, then tap Scan and pick the treadmill from the list.</p>
+
+<button id="scan">Scan for all devices</button>
+<button id="scanF" class="alt">Scan for fitness machines only</button>
+<div class="grid">
+  <button id="s4" class="alt" disabled>Set 4 km/h</button>
+  <button id="s6" class="alt" disabled>Set 6 km/h</button>
+</div>
+<button id="copy" class="alt">Copy log</button>
+
+<div id="log"></div>
+
+<script>
+(function(){
+"use strict";
+var FTMS='00001826-0000-1000-8000-00805f9b34fb';
+var CP  ='00002ad9-0000-1000-8000-00805f9b34fb';
+var OPT=[FTMS,CP,
+  '00001800-0000-1000-8000-00805f9b34fb','00001801-0000-1000-8000-00805f9b34fb',
+  '0000180a-0000-1000-8000-00805f9b34fb','0000180d-0000-1000-8000-00805f9b34fb',
+  '0000180f-0000-1000-8000-00805f9b34fb','00001814-0000-1000-8000-00805f9b34fb',
+  '00001816-0000-1000-8000-00805f9b34fb','0000fff0-0000-1000-8000-00805f9b34fb',
+  '0000ffe0-0000-1000-8000-00805f9b34fb','0000fe59-0000-1000-8000-00805f9b34fb',
+  '6e400001-b5a3-f393-e0a9-e50e24dcca9e'];
+
+var logEl=document.getElementById('log'), cp=null, dev=null;
+function log(msg,cls){
+  var t=new Date().toTimeString().slice(3,8);
+  var s=document.createElement('span');
+  s.className=cls||''; s.textContent='['+t+'] '+msg+'\n';
+  logEl.appendChild(s); logEl.scrollTop=logEl.scrollHeight;
+}
+function withTimeout(p,ms,what){
+  return Promise.race([p,new Promise(function(_,rej){
+    setTimeout(function(){ rej(new Error('timed out after '+(ms/1000)+'s: '+what)); },ms);
+  })]);
+}
+function props(c){
+  var p=c.properties,out=[];
+  ['read','write','writeWithoutResponse','notify','indicate'].forEach(function(k){
+    if(p[k]) out.push(k);
+  });
+  return out.join('/')||'none';
+}
+
+async function go(filtered){
+  cp=null;
+  document.getElementById('s4').disabled=true;
+  document.getElementById('s6').disabled=true;
+  if(!navigator.bluetooth){
+    log('navigator.bluetooth missing — this is not Bluefy.','bad'); return;
+  }
+  log('--- new attempt ---','dim');
+  log('Opening picker. Tap the treadmill, then wait.','dim');
+  try{
+    var opts = filtered ? {filters:[{services:[FTMS]}],optionalServices:OPT}
+                        : {acceptAllDevices:true,optionalServices:OPT};
+    dev = await navigator.bluetooth.requestDevice(opts);
+  }catch(e){
+    log('Picker returned nothing: '+e.name+' — '+e.message,'bad');
+    log('If you tapped the device and got here, it refused pairing.','warn');
+    return;
+  }
+  log('Picked: '+(dev.name||'(unnamed)')+'  id='+(dev.id||'?'),'ok');
+
+  var server=null;
+  for(var attempt=1; attempt<=3 && !server; attempt++){
+    try{
+      log('GATT connect, attempt '+attempt+'…');
+      server = await withTimeout(dev.gatt.connect(),12000,'gatt.connect');
+      log('GATT connected.','ok');
+    }catch(e){
+      log('attempt '+attempt+' failed: '+e.message,'bad');
+      try{ dev.gatt.disconnect(); }catch(_){}
+      await new Promise(function(r){ setTimeout(r,1200); });
+    }
+  }
+  if(!server){ log('Could not open GATT after 3 tries.','bad'); return; }
+
+  var svcs=[];
+  try{
+    svcs = await withTimeout(server.getPrimaryServices(),10000,'getPrimaryServices');
+  }catch(e){ log('Service discovery failed: '+e.message,'bad'); return; }
+
+  log('Found '+svcs.length+' service(s):','ok');
+  for(var i=0;i<svcs.length;i++){
+    var s=svcs[i];
+    log('  '+s.uuid);
+    var chs=[];
+    try{ chs = await s.getCharacteristics(); }catch(e){ log('    (chars unreadable)','warn'); continue; }
+    for(var j=0;j<chs.length;j++){
+      log('    '+chs[j].uuid+'   ['+props(chs[j])+']','dim');
+      if(chs[j].uuid===CP) cp=chs[j];
+    }
+  }
+
+  if(!cp){ log('No FTMS control point (2ad9). This treadmill will not take speed commands over FTMS.','bad'); return; }
+  log('Control point found.','ok');
+
+  try{
+    await cp.startNotifications();
+    cp.addEventListener('characteristicvaluechanged',function(e){
+      var d=e.target.value,b=[];
+      for(var k=0;k<d.byteLength;k++) b.push(d.getUint8(k).toString(16).padStart(2,'0'));
+      var res = d.byteLength>=3 ? d.getUint8(2) : null;
+      log('reply: '+b.join(' ')+(res===1?'  (success)':res!==null?'  (rejected, code '+res+')':''), res===1?'ok':'warn');
+    });
+    log('Listening for replies.','ok');
+  }catch(e){ log('Could not subscribe: '+e.message,'warn'); }
+
+  try{
+    await cp.writeValue(new Uint8Array([0x00]));
+    log('Sent: request control (0x00)','ok');
+  }catch(e){ log('Request control failed: '+e.message,'bad'); return; }
+
+  try{
+    await cp.writeValue(new Uint8Array([0x07]));
+    log('Sent: start/resume (0x07)','ok');
+  }catch(e){ log('Start failed: '+e.message,'warn'); }
+
+  document.getElementById('s4').disabled=false;
+  document.getElementById('s6').disabled=false;
+  log('Now try the speed buttons.','ok');
+}
+
+async function setSpeed(kmh){
+  if(!cp) return;
+  var v=Math.round(kmh*100);
+  try{
+    await cp.writeValue(new Uint8Array([0x02, v&0xFF, (v>>8)&0xFF]));
+    log('Sent: target speed '+kmh+' km/h','ok');
+  }catch(e){ log('Speed write failed: '+e.message,'bad'); }
+}
+
+document.getElementById('scan').addEventListener('click',function(){ go(false); });
+document.getElementById('scanF').addEventListener('click',function(){ go(true); });
+document.getElementById('s4').addEventListener('click',function(){ setSpeed(4); });
+document.getElementById('s6').addEventListener('click',function(){ setSpeed(6); });
+document.getElementById('copy').addEventListener('click',function(){
+  var t=logEl.innerText;
+  if(navigator.clipboard) navigator.clipboard.writeText(t).then(function(){ log('Log copied.','dim'); });
+  else log('Select the log text and copy manually.','warn');
+});
+
+log('Ready. Bluetooth API '+(navigator.bluetooth?'available.':'MISSING — use Bluefy.'), navigator.bluetooth?'ok':'bad');
+})();
+</script>
+</body>
+</html>

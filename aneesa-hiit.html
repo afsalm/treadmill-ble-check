@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Aneesa HIIT</title>
+<style>
+  :root{
+    --navy:#2E6285;
+    --navy-deep:#24506E;
+    --green:#2E6B2E;
+    --green-lit:#3A8A3A;
+    --orange:#DE7340;
+    --red:#B4342A;
+    --bar-side:#4FA3DB;
+    --bar-now:#2E6285;
+    --grey:#B9B9B9;
+    --grey-edge:#8E8E8E;
+    --ink:#101418;
+    --paper:#FFFFFF;
+    --hair:#D8DEE4;
+    --dim:#9AA6B0;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *,*::before,*::after{box-sizing:inherit}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;
+    -webkit-text-size-adjust:100%;
+    -webkit-tap-highlight-color:transparent;
+    overscroll-behavior:none;
+  }
+  #app{
+    height:100%;
+    max-width:520px;
+    margin:0 auto;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    padding:0 12px 10px;
+    overflow-y:auto;
+  }
+
+  /* --- connection strip --- */
+  .link{
+    display:flex;align-items:center;gap:8px;
+    padding:7px 4px 0;font-size:13px;color:var(--dim);
+    flex:0 0 auto;
+  }
+  .dot{width:10px;height:10px;border-radius:50%;background:#C9343A;flex:0 0 auto}
+  .dot.on{background:#39A552}
+  .dot.mid{background:#E0A32B}
+  #linkText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #btnLink{
+    font:600 13px/1 inherit;color:var(--navy);background:none;
+    border:1.5px solid var(--navy);border-radius:7px;padding:7px 12px;
+  }
+
+  /* --- header --- */
+  header{
+    flex:0 0 auto;
+    background:var(--navy);color:#fff;border-radius:6px;
+    padding:16px 12px;text-align:center;
+    font-size:24px;font-weight:700;letter-spacing:.01em;
+  }
+
+  /* --- transport --- */
+  .row{display:flex;gap:14px;flex:0 0 auto}
+  .row > button{flex:1 1 0;min-width:0}
+  button{
+    font-family:inherit;border:none;border-radius:9px;
+    color:#fff;font-weight:700;
+    touch-action:manipulation;cursor:pointer;
+  }
+  button:disabled{opacity:.34}
+  button:active:not(:disabled){transform:translateY(1px)}
+  button:focus-visible{outline:3px solid var(--navy);outline-offset:2px}
+  .transport{height:70px;font-size:25px}
+  .b-green{background:linear-gradient(#3C8A3C,#2A5F2A)}
+  .b-red{background:linear-gradient(#C64036,#9E2B22)}
+  .b-orange{background:linear-gradient(#E88450,#CF6535)}
+  .b-grey{background:linear-gradient(#CFCFCF,#A8A8A8);color:#1A1A1A;
+          box-shadow:inset 0 0 0 1px var(--grey-edge)}
+
+  /* --- readouts --- */
+  .stats{
+    flex:0 0 auto;
+    display:grid;grid-template-columns:repeat(3,1fr);
+    row-gap:12px;column-gap:6px;text-align:center;
+    padding:4px 0 2px;
+  }
+  .stat .k{font-size:13px;font-weight:700;color:var(--navy);line-height:1.25}
+  .stat .v{font-size:23px;font-weight:700;line-height:1.2;margin-top:3px;
+           font-variant-numeric:tabular-nums}
+  .stat .v.wide{font-size:20px}
+  #vStageLeft.urgent{color:var(--red)}
+  #vSpeed.over{color:var(--orange)}
+
+  /* --- stage chart --- */
+  .chart{
+    flex:1 1 auto;min-height:172px;
+    display:grid;grid-template-columns:1fr 1.06fr 1fr;
+    align-items:end;column-gap:4px;
+  }
+  .col{display:flex;flex-direction:column;justify-content:flex-end;height:100%;text-align:center}
+  .col .name{font-size:17px;font-weight:600;color:#3A4249;margin-bottom:5px;min-height:22px}
+  .col.now .name{font-size:19px;font-weight:700;color:var(--ink)}
+  .bar{
+    border-radius:2px;display:flex;align-items:center;justify-content:center;
+    color:#fff;font-weight:700;font-size:19px;
+    background:var(--bar-side);
+    transition:height .28s ease;
+  }
+  .col.now .bar{background:var(--bar-now);font-size:21px}
+  .col.empty .bar{background:#EDF1F4;box-shadow:inset 0 0 0 1px var(--hair)}
+  .col .len{font-size:16px;color:#3A4249;margin-top:6px;min-height:20px}
+
+  /* --- presets --- */
+  .presets{display:flex;gap:12px;flex:0 0 auto}
+  .preset{
+    flex:1 1 0;height:86px;background:#fff;color:var(--ink);
+    border:2px solid var(--navy);border-radius:11px;
+    font-size:21px;font-weight:700;line-height:1.2;
+  }
+  .preset:active:not(:disabled){background:#EAF2F8}
+  .preset.active{background:var(--navy);color:#fff}
+  .nav{height:62px;font-size:22px}
+
+  #toast{
+    position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(16px + env(safe-area-inset-bottom,0px));
+    background:rgba(16,20,24,.93);color:#fff;
+    padding:11px 18px;border-radius:9px;font-size:15px;font-weight:600;
+    max-width:86vw;text-align:center;opacity:0;pointer-events:none;
+    transition:opacity .22s ease;z-index:9;
+  }
+  #toast.show{opacity:1}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="link">
+    <span class="dot" id="dot"></span>
+    <span id="linkText">Not connected</span>
+    <button id="btnLink">Connect</button>
+  </div>
+
+  <header>Aneesa HIIT</header>
+
+  <div class="row">
+    <button id="btnStart" class="transport b-green">Start</button>
+    <button id="btnPause" class="transport b-orange" disabled>Pause</button>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Speed</div><div class="v" id="vSpeed">—</div></div>
+    <div class="stat"><div class="k">Stage</div><div class="v" id="vStage">—</div></div>
+    <div class="stat"><div class="k">Stage left</div><div class="v" id="vStageLeft">—</div></div>
+    <div class="stat"><div class="k">Start time</div><div class="v wide" id="vStart">—</div></div>
+    <div class="stat"><div class="k">End time</div><div class="v wide" id="vEnd">—</div></div>
+    <div class="stat"><div class="k">Elapsed</div><div class="v wide" id="vElapsed">0:00</div></div>
+  </div>
+
+  <div class="chart" id="chart">
+    <div class="col empty" id="cPrev"><div class="name"></div><div class="bar"></div><div class="len"></div></div>
+    <div class="col now"  id="cNow"><div class="name"></div><div class="bar"></div><div class="len"></div></div>
+    <div class="col empty" id="cNext"><div class="name"></div><div class="bar"></div><div class="len"></div></div>
+  </div>
+
+  <div class="row">
+    <button id="btnBack" class="nav b-grey" disabled>Back</button>
+    <button id="btnNext" class="nav b-grey" disabled>Next</button>
+  </div>
+
+  <div class="presets" id="presets"></div>
+
+</div>
+<div id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============ program ============ */
+function buildProgram(){
+  var s=[{min:2.5,speed:4},{min:2.5,speed:6}];
+  for(var i=0;i<8;i++){ s.push({min:0.5,speed:14}); s.push({min:1.5,speed:4}); }
+  s.push({min:1.5,speed:4});               // extra cooldown
+  return s.map(function(x,i){ return {idx:i, ms:Math.round(x.min*60000), speed:x.speed, min:x.min}; });
+}
+var PROGRAM = buildProgram();
+var PRESETS = [4,6,14];
+var MAXSPEED = 14;
+
+/* ============ state ============ */
+var st = {
+  phase:'idle',          // idle | running | paused | done
+  idx:0,
+  stageLeft:PROGRAM[0].ms,
+  elapsed:0,
+  startedAt:null,
+  last:0,
+  override:null          // manual speed until next stage boundary
+};
+
+/* ============ dom ============ */
+var $ = function(id){ return document.getElementById(id); };
+var dot=$('dot'), linkText=$('linkText'), btnLink=$('btnLink');
+var btnStart=$('btnStart'), btnPause=$('btnPause');
+var btnBack=$('btnBack'), btnNext=$('btnNext');
+var vSpeed=$('vSpeed'), vStage=$('vStage'), vStageLeft=$('vStageLeft');
+var vStart=$('vStart'), vEnd=$('vEnd'), vElapsed=$('vElapsed');
+var cPrev=$('cPrev'), cNow=$('cNow'), cNext=$('cNext');
+var toastEl=$('toast'), toastT=null;
+
+function toast(m){
+  toastEl.textContent=m; toastEl.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(function(){ toastEl.classList.remove('show'); },2100);
+}
+
+/* ============ bluetooth (FTMS) ============ */
+var FTMS='00001826-0000-1000-8000-00805f9b34fb';
+var CP  ='00002ad9-0000-1000-8000-00805f9b34fb';   // control point
+var TD  ='00002acd-0000-1000-8000-00805f9b34fb';   // treadmill data
+
+var dev=null, cp=null, haveControl=false;
+var q=Promise.resolve();
+function enqueue(fn){
+  q = q.then(fn).catch(function(e){ console.warn(e); });
+  return q;
+}
+function setLink(cls,text){
+  dot.className='dot'+(cls?' '+cls:''); linkText.textContent=text;
+}
+function connected(){ return !!(dev && dev.gatt && dev.gatt.connected && cp); }
+
+function writeCP(bytes){
+  if(!connected()) return Promise.resolve();
+  return enqueue(function(){ return cp.writeValue(new Uint8Array(bytes)); });
+}
+function sendSpeed(kmh){
+  var v=Math.round(kmh*100);                       // FTMS: 0.01 km/h units
+  return writeCP([0x02, v & 0xFF, (v>>8) & 0xFF]);
+}
+function sendStart(){ return writeCP([0x07]); }
+function sendStop(){  return writeCP([0x08,0x01]); }
+
+async function connect(){
+  if(!navigator.bluetooth){
+    toast('Open this page in Bluefy — Safari has no Bluetooth.');
+    return;
+  }
+  try{
+    setLink('mid','Searching…'); btnLink.disabled=true;
+    dev = await navigator.bluetooth.requestDevice({
+      filters:[{services:[FTMS]}],
+      optionalServices:[FTMS]
+    });
+    dev.addEventListener('gattserverdisconnected', function(){
+      cp=null; haveControl=false; setLink('','Disconnected');
+      btnLink.textContent='Reconnect'; btnLink.disabled=false;
+      toast('Treadmill disconnected. Timer still running.');
+    });
+    setLink('mid','Connecting…');
+    var server = await dev.gatt.connect();
+    var svc = await server.getPrimaryService(FTMS);
+    cp = await svc.getCharacteristic(CP);
+    try{
+      await cp.startNotifications();
+      cp.addEventListener('characteristicvaluechanged', function(e){
+        var d=e.target.value;
+        if(d.getUint8(0)===0x80 && d.byteLength>=3 && d.getUint8(2)!==0x01){
+          toast('Treadmill rejected that command.');
+        }
+      });
+    }catch(e){}
+    await enqueue(function(){ return cp.writeValue(new Uint8Array([0x00])); }); // request control
+    haveControl=true;
+    try{
+      var td = await svc.getCharacteristic(TD);
+      await td.startNotifications();
+      td.addEventListener('characteristicvaluechanged', onTreadmillData);
+    }catch(e){}
+    setLink('on', dev.name || 'Treadmill connected');
+    btnLink.textContent='Connected'; btnLink.disabled=false;
+    toast('Connected. Get the belt moving before you start.');
+  }catch(err){
+    cp=null;
+    setLink('', err && err.name==='NotFoundError' ? 'No treadmill picked' : 'Connection failed');
+    btnLink.textContent='Connect'; btnLink.disabled=false;
+  }
+}
+var actual=null;
+function onTreadmillData(e){
+  var d=e.target.value;
+  if(d.byteLength>=4){ actual = d.getUint16(2,true)/100; }
+}
+
+/* ============ helpers ============ */
+function clock(ts){
+  var d=new Date(ts), h=d.getHours(), m=d.getMinutes();
+  var ap = h>=12 ? 'pm':'am'; h = h%12; if(h===0) h=12;
+  return h+':'+(m<10?'0':'')+m+ap;
+}
+function mmss(ms){
+  if(ms<0) ms=0;
+  var t=Math.round(ms/1000), m=Math.floor(t/60), s=t%60;
+  return m+':'+(s<10?'0':'')+s;
+}
+function remainingMs(){
+  var r=st.stageLeft;
+  for(var i=st.idx+1;i<PROGRAM.length;i++) r+=PROGRAM[i].ms;
+  return r;
+}
+function barPx(speed){
+  var box = Math.max(96, cNow.clientHeight - 58);
+  return Math.round(box*0.34 + (speed/MAXSPEED)*box*0.66);
+}
+
+/* ============ rendering ============ */
+function paintCol(el, stage, isNow){
+  var bar=el.querySelector('.bar'), name=el.querySelector('.name'), len=el.querySelector('.len');
+  if(!stage){
+    el.classList.add('empty');
+    name.textContent=''; bar.textContent=''; len.textContent='';
+    bar.style.height = isNow ? barPx(4)+'px' : '46px';
+    return;
+  }
+  el.classList.remove('empty');
+  name.textContent='Stage '+(stage.idx+1);
+  bar.textContent=stage.speed+' km/h';
+  len.textContent=stage.min+' min';
+  bar.style.height=barPx(stage.speed)+'px';
+}
+
+function render(){
+  var live = st.phase==='running' || st.phase==='paused';
+  var cur  = live ? PROGRAM[st.idx] : null;
+
+  vSpeed.classList.toggle('over', st.override!==null);
+  if(st.override!==null)      vSpeed.textContent=st.override+' km/h';
+  else if(cur)                vSpeed.textContent=cur.speed+' km/h';
+  else                        vSpeed.textContent='—';
+
+  vStage.textContent  = live ? (st.idx+1)+' / '+PROGRAM.length : (st.phase==='done'?'Done':'—');
+  vStageLeft.textContent = live ? mmss(st.stageLeft) : '—';
+  vStageLeft.classList.toggle('urgent', live && st.stageLeft<=5000);
+
+  vStart.textContent = st.startedAt ? clock(st.startedAt) : '—';
+  vEnd.textContent   = live ? clock(Date.now()+remainingMs()) : (st.phase==='done' ? 'Finished' : '—');
+  vElapsed.textContent = mmss(st.elapsed);
+
+  paintCol(cPrev, live && st.idx>0 ? PROGRAM[st.idx-1] : null, false);
+  paintCol(cNow,  cur, true);
+  paintCol(cNext, live && st.idx<PROGRAM.length-1 ? PROGRAM[st.idx+1] : null, false);
+
+  btnStart.textContent = live ? 'Stop' : 'Start';
+  btnStart.className   = 'transport '+(live ? 'b-red':'b-green');
+  btnPause.textContent = st.phase==='paused' ? 'Resume' : 'Pause';
+  btnPause.className   = 'transport '+(st.phase==='paused' ? 'b-green':'b-orange');
+  btnPause.disabled    = !live;
+  btnBack.disabled     = !live || st.idx===0;
+  btnNext.disabled     = !live || st.idx>=PROGRAM.length-1;
+
+  [].forEach.call(document.querySelectorAll('.preset'), function(b){
+    b.classList.toggle('active', st.override!==null && +b.dataset.s===st.override);
+  });
+}
+
+/* ============ clock loop ============ */
+function tick(){
+  var now=Date.now();
+  if(st.phase==='running'){
+    var dt=now-st.last; st.last=now;
+    st.stageLeft-=dt; st.elapsed+=dt;
+    while(st.stageLeft<=0 && st.phase==='running'){
+      var carry=-st.stageLeft;
+      if(st.idx>=PROGRAM.length-1){ finish(); break; }
+      st.idx++; enterStage(st.idx); st.stageLeft-=carry;
+    }
+  }
+  render();
+}
+setInterval(tick,200);
+
+/* ============ actions ============ */
+function enterStage(i){
+  st.idx=i; st.stageLeft=PROGRAM[i].ms; st.override=null;
+  sendSpeed(PROGRAM[i].speed);
+}
+function start(){
+  st.phase='running'; st.idx=0; st.elapsed=0; st.override=null;
+  st.startedAt=Date.now(); st.last=Date.now();
+  st.stageLeft=PROGRAM[0].ms;
+  sendStart().then(function(){ return sendSpeed(PROGRAM[0].speed); });
+  keepAwake();
+  render();
+}
+function stop(){
+  st.phase='done'; st.override=null;
+  sendStop();
+  releaseAwake();
+  toast('Session stopped.');
+  render();
+}
+function finish(){
+  st.phase='done'; st.override=null;
+  sendStop();
+  releaseAwake();
+  toast('Program complete — belt stopping.');
+  render();
+}
+function togglePause(){
+  if(st.phase==='running'){
+    st.phase='paused';                 // belt is left at its current speed
+    render();
+  }else if(st.phase==='paused'){
+    st.phase='running'; st.last=Date.now();
+    if(st.override===null) sendSpeed(PROGRAM[st.idx].speed);
+    render();
+  }
+}
+function jump(delta){
+  var n=st.idx+delta;
+  if(n<0||n>=PROGRAM.length) return;
+  enterStage(n);
+  render();
+}
+function preset(v){
+  st.override=v;
+  sendSpeed(v);
+  render();
+}
+
+btnLink.addEventListener('click',connect);
+btnStart.addEventListener('click',function(){
+  (st.phase==='running'||st.phase==='paused') ? stop() : start();
+});
+btnPause.addEventListener('click',togglePause);
+btnBack.addEventListener('click',function(){ jump(-1); });
+btnNext.addEventListener('click',function(){ jump(1); });
+
+var pbox=$('presets');
+PRESETS.forEach(function(v){
+  var b=document.createElement('button');
+  b.className='preset'; b.dataset.s=v;
+  b.innerHTML=v+'<br>km/h';
+  b.addEventListener('click',function(){ preset(v); });
+  pbox.appendChild(b);
+});
+
+/* ============ screen wake ============ */
+var lock=null;
+async function keepAwake(){
+  try{ if('wakeLock' in navigator) lock = await navigator.wakeLock.request('screen'); }catch(e){}
+}
+function releaseAwake(){ try{ if(lock){ lock.release(); lock=null; } }catch(e){} }
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='visible' && st.phase==='running') keepAwake();
+});
+window.addEventListener('resize',render);
+
+render();
+})();
+</script>
+</body>
+</html>
