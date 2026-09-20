@@ -131,6 +131,8 @@
   .preset:active:not(:disabled){background:#EAF2F8}
   .preset.active{background:var(--navy);color:#fff}
   .nav{height:62px;font-size:22px}
+  .row.four{gap:8px}
+  .row.four .nav{font-size:16px}
 
   #toast{
     position:fixed;left:50%;transform:translateX(-50%);
@@ -175,9 +177,11 @@
     <div class="col empty" id="cNext"><div class="name"></div><div class="bar"></div><div class="len"></div></div>
   </div>
 
-  <div class="row">
+  <div class="row four">
+    <button id="btnMinus10" class="nav b-grey" disabled>-10s</button>
     <button id="btnBack" class="nav b-grey" disabled>Back</button>
     <button id="btnNext" class="nav b-grey" disabled>Next</button>
+    <button id="btnPlus10" class="nav b-grey" disabled>+10s</button>
   </div>
 
   <div class="presets" id="presets"></div>
@@ -216,6 +220,7 @@ var $ = function(id){ return document.getElementById(id); };
 var dot=$('dot'), linkText=$('linkText'), btnLink=$('btnLink');
 var btnStart=$('btnStart'), btnPause=$('btnPause');
 var btnBack=$('btnBack'), btnNext=$('btnNext');
+var btnMinus10=$('btnMinus10'), btnPlus10=$('btnPlus10');
 var vSpeed=$('vSpeed'), vStage=$('vStage'), vStageLeft=$('vStageLeft');
 var vStart=$('vStart'), vEnd=$('vEnd'), vElapsed=$('vElapsed');
 var cPrev=$('cPrev'), cNow=$('cNow'), cNext=$('cNext');
@@ -373,6 +378,18 @@ function remainingMs(){
   for(var i=st.idx+1;i<PROGRAM.length;i++) r+=PROGRAM[i].ms;
   return r;
 }
+function totalProgramMs(){
+  return PROGRAM.reduce(function(sum,s){ return sum+s.ms; },0);
+}
+/* maps an absolute elapsed time (ms since session start) to {idx, stageLeft} */
+function stateAtElapsed(ms){
+  var acc=0;
+  for(var i=0;i<PROGRAM.length;i++){
+    var end=acc+PROGRAM[i].ms;
+    if(ms<end || i===PROGRAM.length-1) return {idx:i, stageLeft:Math.max(0,end-ms)};
+    acc=end;
+  }
+}
 function barPx(speed){
   var box = Math.max(96, cNow.clientHeight - 58);
   return Math.round(box*0.34 + (speed/MAXSPEED)*box*0.66);
@@ -422,6 +439,8 @@ function render(){
   btnPause.disabled    = !live;
   btnBack.disabled     = !live || st.idx===0;
   btnNext.disabled     = !live || st.idx>=PROGRAM.length-1;
+  btnMinus10.disabled  = !live;
+  btnPlus10.disabled   = !live;
 
   [].forEach.call(document.querySelectorAll('.preset'), function(b){
     b.classList.toggle('active', st.override!==null && +b.dataset.s===st.override);
@@ -487,6 +506,18 @@ function jump(delta){
   enterStage(n);
   render();
 }
+function shiftTime(deltaMs){
+  if(st.phase!=='running' && st.phase!=='paused') return;
+  var newElapsed=st.elapsed+deltaMs;
+  if(newElapsed>=totalProgramMs()){ finish(); return; }
+  newElapsed=Math.max(0,newElapsed);
+  var pos=stateAtElapsed(newElapsed);
+  st.elapsed=newElapsed;
+  if(pos.idx!==st.idx) enterStage(pos.idx);   // stage changed: resends speed, clears override
+  st.idx=pos.idx;
+  st.stageLeft=pos.stageLeft;
+  render();
+}
 function preset(v){
   st.override=v;
   sendSpeed(v);
@@ -500,6 +531,8 @@ btnStart.addEventListener('click',function(){
 btnPause.addEventListener('click',togglePause);
 btnBack.addEventListener('click',function(){ jump(-1); });
 btnNext.addEventListener('click',function(){ jump(1); });
+btnMinus10.addEventListener('click',function(){ shiftTime(-10000); });
+btnPlus10.addEventListener('click',function(){ shiftTime(10000); });
 
 var pbox=$('presets');
 PRESETS.forEach(function(v){
