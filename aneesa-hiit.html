@@ -170,7 +170,6 @@
     <div class="stat"><div class="k">Start time</div><div class="v wide" id="vStart">—</div></div>
     <div class="stat"><div class="k">End time</div><div class="v wide" id="vEnd">—</div></div>
     <div class="stat"><div class="k">Elapsed</div><div class="v wide" id="vElapsed">0:00</div></div>
-    <div class="stat"><div class="k">Actual (from belt)</div><div class="v wide" id="vActual">—</div></div>
   </div>
 
   <div class="chart" id="chart">
@@ -224,7 +223,7 @@ var btnStart=$('btnStart'), btnPause=$('btnPause');
 var btnBack=$('btnBack'), btnNext=$('btnNext');
 var btnMinus10=$('btnMinus10'), btnPlus10=$('btnPlus10');
 var vSpeed=$('vSpeed'), vStage=$('vStage'), vStageLeft=$('vStageLeft');
-var vStart=$('vStart'), vEnd=$('vEnd'), vElapsed=$('vElapsed'), vActual=$('vActual');
+var vStart=$('vStart'), vEnd=$('vEnd'), vElapsed=$('vElapsed');
 var cPrev=$('cPrev'), cNow=$('cNow'), cNext=$('cNext');
 var toastEl=$('toast'), toastT=null;
 
@@ -371,7 +370,7 @@ function onTreadmillData(e){
   var d=e.target.value;
   if(d.byteLength>=4){
     actual = d.getUint16(2,true)/100;
-    vActual.textContent = actual.toFixed(1)+' km/h';
+    render();
   }
 }
 
@@ -430,10 +429,7 @@ function render(){
   var cur  = live ? PROGRAM[st.idx] : null;
 
   vSpeed.classList.toggle('over', st.override!==null);
-  if(starting)                 vSpeed.textContent='Starting…';
-  else if(st.override!==null)  vSpeed.textContent=st.override+' km/h';
-  else if(cur)                 vSpeed.textContent=cur.speed+' km/h';
-  else                         vSpeed.textContent='—';
+  vSpeed.textContent = actual!==null ? actual.toFixed(1)+' km/h' : '—';
 
   vStage.textContent  = live ? (st.idx+1)+' / '+PROGRAM.length : (st.phase==='done'?'Done':'—');
   vStageLeft.textContent = live ? mmss(st.stageLeft) : '—';
