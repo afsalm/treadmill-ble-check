@@ -237,6 +237,16 @@ function enqueue(fn){
   q = q.then(fn).catch(function(e){ console.warn(e); });
   return q;
 }
+var pendingAck={};                 // opcode -> {resolve, timer}
+function onCPIndicate(e){
+  var d=e.target.value;
+  if(d.byteLength>=3 && d.getUint8(0)===0x80){
+    var op=d.getUint8(1), result=d.getUint8(2);
+    var pending=pendingAck[op];
+    if(pending){ clearTimeout(pending.timer); delete pendingAck[op]; pending.resolve(result); }
+    if(result!==1) toast('Treadmill rejected that command.');
+  }
+}
 /* Bluefy reports short UUIDs ("2AD9"), Chrome full 128-bit. Normalise. */
 function key(u){
   u=String(u).toLowerCase();
@@ -252,8 +262,13 @@ function connected(){ return !!(dev && dev.gatt && dev.gatt.connected && cp); }
 
 function writeCP(bytes){
   if(!connected()) return Promise.resolve();
+  var op=bytes[0];
   return enqueue(async function(){
     var b=new Uint8Array(bytes);
+    var ack=new Promise(function(resolve){
+      var timer=setTimeout(function(){ delete pendingAck[op]; resolve(null); },2000);
+      pendingAck[op]={resolve:resolve, timer:timer};
+    });
     try{
       if(cp.properties && cp.properties.writeWithoutResponse && cp.writeValueWithoutResponse){
         await cp.writeValueWithoutResponse(b);
@@ -263,7 +278,8 @@ function writeCP(bytes){
     }catch(e){
       await cp.writeValue(b);
     }
-    await new Promise(function(r){ setTimeout(r,150); });
+    await ack;                        // wait for the treadmill's indicate response
+    await new Promise(function(r){ setTimeout(r,60); });
   });
 }
 function sendSpeed(kmh){
@@ -316,12 +332,7 @@ async function connect(){
 
     try{
       await cp.startNotifications();
-      cp.addEventListener('characteristicvaluechanged', function(e){
-        var d=e.target.value;
-        if(d.byteLength>=3 && d.getUint8(0)===0x80 && d.getUint8(2)!==0x01){
-          toast('Treadmill rejected that command.');
-        }
-      });
+      cp.addEventListener('characteristicvaluechanged', onCPIndicate);
     }catch(e){}
     await writeCP([0x00]);                     // request control
     haveControl=true;
@@ -442,7 +453,7 @@ function start(){
   st.phase='running'; st.idx=0; st.elapsed=0; st.override=null;
   st.startedAt=Date.now(); st.last=Date.now();
   st.stageLeft=PROGRAM[0].ms;
-  sendStart().then(function(){ return sendSpeed(PROGRAM[0].speed); });
+  sendSpeed(PROGRAM[0].speed).then(function(){ return sendStart(); });
   keepAwake();
   render();
 }
