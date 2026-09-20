@@ -283,8 +283,7 @@ async function connect(){
     dev = await navigator.bluetooth.requestDevice({
       acceptAllDevices:true,
       optionalServices:[FTMS,'0000ffe0-0000-1000-8000-00805f9b34fb',
-                        '0000180a-0000-1000-8000-00805f9b34fb',
-                        0x1826,0xFFE0,0x180A]
+                        '0000180a-0000-1000-8000-00805f9b34fb']
     });
     dev.addEventListener('gattserverdisconnected', function(){
       cp=null; haveControl=false; setLink('','Disconnected');
