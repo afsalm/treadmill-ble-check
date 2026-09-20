@@ -361,7 +361,11 @@ async function connect(){
     btnLink.textContent='Connect'; btnLink.disabled=false;
   }
 }
-var actual=null;
+var actual=null, targetSpeed=null, lastSpeedRetry=0;
+function setTarget(v){
+  targetSpeed=v; lastSpeedRetry=Date.now();
+  return sendSpeed(v);
+}
 function onTreadmillData(e){
   var d=e.target.value;
   if(d.byteLength>=4){
@@ -468,6 +472,13 @@ function tick(){
       if(st.idx>=PROGRAM.length-1){ finish(); break; }
       st.idx++; enterStage(st.idx); st.stageLeft-=carry;
     }
+    /* watchdog: belt sometimes ignores a Set Target Speed command outright.
+       Compare against the treadmill's own reported speed and re-send until it matches. */
+    if(st.phase==='running' && targetSpeed!==null && actual!==null &&
+       (now-lastSpeedRetry)>2500 && Math.abs(actual-targetSpeed)>0.4){
+      lastSpeedRetry=now;
+      sendSpeed(targetSpeed);
+    }
   }
   render();
 }
@@ -476,7 +487,7 @@ setInterval(tick,200);
 /* ============ actions ============ */
 function enterStage(i){
   st.idx=i; st.stageLeft=PROGRAM[i].ms; st.override=null;
-  sendSpeed(PROGRAM[i].speed);
+  setTarget(PROGRAM[i].speed);
 }
 function start(){
   st.phase='starting'; st.idx=0; st.elapsed=0; st.override=null;
@@ -490,7 +501,7 @@ function start(){
     .then(function(){ return new Promise(function(r){ setTimeout(r,10000); }); })
     .then(function(){
       if(st.phase!=='starting') return;              // stopped during ramp-up
-      return sendSpeed(PROGRAM[0].speed);             // now it's moving, this actually takes
+      return setTarget(PROGRAM[0].speed);             // now it's moving, this actually takes
     })
     .then(function(){
       if(st.phase!=='starting') return;
@@ -518,7 +529,7 @@ function togglePause(){
     render();
   }else if(st.phase==='paused'){
     st.phase='running'; st.last=Date.now();
-    if(st.override===null) sendSpeed(PROGRAM[st.idx].speed);
+    if(st.override===null) setTarget(PROGRAM[st.idx].speed);
     render();
   }
 }
@@ -542,7 +553,7 @@ function shiftTime(deltaMs){
 }
 function preset(v){
   st.override=v;
-  sendSpeed(v);
+  setTarget(v);
   render();
 }
 
