@@ -361,7 +361,7 @@ async function connect(){
     btnLink.textContent='Connect'; btnLink.disabled=false;
   }
 }
-var actual=null, targetSpeed=null, lastSpeedRetry=0;
+var actual=null, targetSpeed=null, lastSpeedRetry=0, pausedSpeed=null;
 function setTarget(v){
   targetSpeed=v; lastSpeedRetry=Date.now();
   return sendSpeed(v);
@@ -469,13 +469,14 @@ function tick(){
       if(st.idx>=PROGRAM.length-1){ finish(); break; }
       st.idx++; enterStage(st.idx); st.stageLeft-=carry;
     }
-    /* watchdog: belt sometimes ignores a Set Target Speed command outright.
-       Compare against the treadmill's own reported speed and re-send until it matches. */
-    if(st.phase==='running' && targetSpeed!==null && actual!==null &&
-       (now-lastSpeedRetry)>2500 && Math.abs(actual-targetSpeed)>0.4){
-      lastSpeedRetry=now;
-      sendSpeed(targetSpeed);
-    }
+  }
+  /* watchdog: belt sometimes ignores a Set Target Speed command outright.
+     Compare against the treadmill's own reported speed and re-send until it matches.
+     Runs while paused too, so a Pause's "go to 0" actually sticks. */
+  if((st.phase==='running'||st.phase==='paused') && targetSpeed!==null && actual!==null &&
+     (now-lastSpeedRetry)>2500 && Math.abs(actual-targetSpeed)>0.4){
+    lastSpeedRetry=now;
+    sendSpeed(targetSpeed);
   }
   render();
 }
@@ -522,11 +523,13 @@ function finish(){
 }
 function togglePause(){
   if(st.phase==='running'){
-    st.phase='paused';                 // belt is left at its current speed
+    pausedSpeed = targetSpeed;         // remember what it was actually running at
+    st.phase='paused';
+    setTarget(0);                      // watchdog will keep forcing this to 0
     render();
   }else if(st.phase==='paused'){
     st.phase='running'; st.last=Date.now();
-    if(st.override===null) setTarget(PROGRAM[st.idx].speed);
+    setTarget(pausedSpeed!==null ? pausedSpeed : PROGRAM[st.idx].speed);
     render();
   }
 }
