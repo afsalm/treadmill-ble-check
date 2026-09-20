@@ -420,17 +420,19 @@ function paintCol(el, stage, isNow){
 }
 
 function render(){
-  var live = st.phase==='running' || st.phase==='paused';
+  var starting = st.phase==='starting';
+  var live = st.phase==='running' || st.phase==='paused' || starting;
   var cur  = live ? PROGRAM[st.idx] : null;
 
   vSpeed.classList.toggle('over', st.override!==null);
-  if(st.override!==null)      vSpeed.textContent=st.override+' km/h';
-  else if(cur)                vSpeed.textContent=cur.speed+' km/h';
-  else                        vSpeed.textContent='—';
+  if(starting)                 vSpeed.textContent='Starting…';
+  else if(st.override!==null)  vSpeed.textContent=st.override+' km/h';
+  else if(cur)                 vSpeed.textContent=cur.speed+' km/h';
+  else                         vSpeed.textContent='—';
 
   vStage.textContent  = live ? (st.idx+1)+' / '+PROGRAM.length : (st.phase==='done'?'Done':'—');
   vStageLeft.textContent = live ? mmss(st.stageLeft) : '—';
-  vStageLeft.classList.toggle('urgent', live && st.stageLeft<=5000);
+  vStageLeft.classList.toggle('urgent', live && !starting && st.stageLeft<=5000);
 
   vStart.textContent = st.startedAt ? clock(st.startedAt) : '—';
   vEnd.textContent   = live ? clock(Date.now()+remainingMs()) : (st.phase==='done' ? 'Finished' : '—');
@@ -444,11 +446,11 @@ function render(){
   btnStart.className   = 'transport '+(live ? 'b-red':'b-green');
   btnPause.textContent = st.phase==='paused' ? 'Resume' : 'Pause';
   btnPause.className   = 'transport '+(st.phase==='paused' ? 'b-green':'b-orange');
-  btnPause.disabled    = !live;
-  btnBack.disabled     = !live || st.idx===0;
-  btnNext.disabled     = !live || st.idx>=PROGRAM.length-1;
-  btnMinus10.disabled  = !live;
-  btnPlus10.disabled   = !live;
+  btnPause.disabled    = !live || starting;
+  btnBack.disabled     = !live || starting || st.idx===0;
+  btnNext.disabled     = !live || starting || st.idx>=PROGRAM.length-1;
+  btnMinus10.disabled  = !live || starting;
+  btnPlus10.disabled   = !live || starting;
 
   [].forEach.call(document.querySelectorAll('.preset'), function(b){
     b.classList.toggle('active', st.override!==null && +b.dataset.s===st.override);
@@ -477,14 +479,24 @@ function enterStage(i){
   sendSpeed(PROGRAM[i].speed);
 }
 function start(){
-  st.phase='running'; st.idx=0; st.elapsed=0; st.override=null;
+  st.phase='starting'; st.idx=0; st.elapsed=0; st.override=null;
   st.startedAt=Date.now(); st.last=Date.now();
   st.stageLeft=PROGRAM[0].ms;
-  writeCP([0x00])                                   // re-request control in case it lapsed
-    .then(function(){ return sendSpeed(PROGRAM[0].speed); })
-    .then(function(){ return sendStart(); });
   keepAwake();
   render();
+
+  writeCP([0x00])                                   // re-request control in case it lapsed
+    .then(function(){ return sendStart(); })         // belt moves at its own default speed first
+    .then(function(){ return new Promise(function(r){ setTimeout(r,5000); }); })
+    .then(function(){
+      if(st.phase!=='starting') return;              // stopped during ramp-up
+      return sendSpeed(PROGRAM[0].speed);             // now it's moving, this actually takes
+    })
+    .then(function(){
+      if(st.phase!=='starting') return;
+      st.phase='running'; st.last=Date.now();          // countdown starts now, ramp time excluded
+      render();
+    });
 }
 function stop(){
   st.phase='done'; st.override=null;
@@ -536,7 +548,7 @@ function preset(v){
 
 btnLink.addEventListener('click',connect);
 btnStart.addEventListener('click',function(){
-  (st.phase==='running'||st.phase==='paused') ? stop() : start();
+  (st.phase==='running'||st.phase==='paused'||st.phase==='starting') ? stop() : start();
 });
 btnPause.addEventListener('click',togglePause);
 btnBack.addEventListener('click',function(){ jump(-1); });
