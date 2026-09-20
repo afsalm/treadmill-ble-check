@@ -237,6 +237,14 @@ function enqueue(fn){
   q = q.then(fn).catch(function(e){ console.warn(e); });
   return q;
 }
+/* Bluefy reports short UUIDs ("2AD9"), Chrome full 128-bit. Normalise. */
+function key(u){
+  u=String(u).toLowerCase();
+  var m=u.match(/^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/);
+  if(m) return m[1];
+  if(/^[0-9a-f]{4}$/.test(u)) return u;
+  return u;
+}
 function setLink(cls,text){
   dot.className='dot'+(cls?' '+cls:''); linkText.textContent=text;
 }
@@ -244,7 +252,19 @@ function connected(){ return !!(dev && dev.gatt && dev.gatt.connected && cp); }
 
 function writeCP(bytes){
   if(!connected()) return Promise.resolve();
-  return enqueue(function(){ return cp.writeValue(new Uint8Array(bytes)); });
+  return enqueue(async function(){
+    var b=new Uint8Array(bytes);
+    try{
+      if(cp.properties && cp.properties.writeWithoutResponse && cp.writeValueWithoutResponse){
+        await cp.writeValueWithoutResponse(b);
+      }else{
+        await cp.writeValue(b);
+      }
+    }catch(e){
+      await cp.writeValue(b);
+    }
+    await new Promise(function(r){ setTimeout(r,150); });
+  });
 }
 function sendSpeed(kmh){
   var v=Math.round(kmh*100);                       // FTMS: 0.01 km/h units
@@ -261,8 +281,10 @@ async function connect(){
   try{
     setLink('mid','Searching…'); btnLink.disabled=true;
     dev = await navigator.bluetooth.requestDevice({
-      filters:[{services:[FTMS]}],
-      optionalServices:[FTMS]
+      acceptAllDevices:true,
+      optionalServices:[FTMS,'0000ffe0-0000-1000-8000-00805f9b34fb',
+                        '0000180a-0000-1000-8000-00805f9b34fb',
+                        0x1826,0xFFE0,0x180A]
     });
     dev.addEventListener('gattserverdisconnected', function(){
       cp=null; haveControl=false; setLink('','Disconnected');
@@ -270,25 +292,46 @@ async function connect(){
       toast('Treadmill disconnected. Timer still running.');
     });
     setLink('mid','Connecting…');
-    var server = await dev.gatt.connect();
-    var svc = await server.getPrimaryService(FTMS);
-    cp = await svc.getCharacteristic(CP);
+    var server=null;
+    for(var a=1;a<=3&&!server;a++){
+      try{ server = await dev.gatt.connect(); }
+      catch(e){
+        try{ dev.gatt.disconnect(); }catch(_){}
+        await new Promise(function(r){ setTimeout(r,1200); });
+      }
+    }
+    if(!server) throw new Error('GATT connect failed');
+
+    var svcs = await server.getPrimaryServices(), tdChar=null;
+    cp=null;
+    for(var i=0;i<svcs.length;i++){
+      var chs=[];
+      try{ chs = await svcs[i].getCharacteristics(); }catch(e){ continue; }
+      for(var j=0;j<chs.length;j++){
+        var k=key(chs[j].uuid);
+        if(k==='2ad9') cp=chs[j];
+        if(k==='2acd') tdChar=chs[j];
+      }
+    }
+    if(!cp) throw new Error('No control point');
+
     try{
       await cp.startNotifications();
       cp.addEventListener('characteristicvaluechanged', function(e){
         var d=e.target.value;
-        if(d.getUint8(0)===0x80 && d.byteLength>=3 && d.getUint8(2)!==0x01){
+        if(d.byteLength>=3 && d.getUint8(0)===0x80 && d.getUint8(2)!==0x01){
           toast('Treadmill rejected that command.');
         }
       });
     }catch(e){}
-    await enqueue(function(){ return cp.writeValue(new Uint8Array([0x00])); }); // request control
+    await writeCP([0x00]);                     // request control
     haveControl=true;
-    try{
-      var td = await svc.getCharacteristic(TD);
-      await td.startNotifications();
-      td.addEventListener('characteristicvaluechanged', onTreadmillData);
-    }catch(e){}
+    if(tdChar){
+      try{
+        await tdChar.startNotifications();
+        tdChar.addEventListener('characteristicvaluechanged', onTreadmillData);
+      }catch(e){}
+    }
     setLink('on', dev.name || 'Treadmill connected');
     btnLink.textContent='Connected'; btnLink.disabled=false;
     toast('Connected. Get the belt moving before you start.');
